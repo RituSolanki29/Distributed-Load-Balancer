@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Simulation - Load Balancer</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            overflow: hidden;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .header h1 {
+            font-size: 1.5em;
+            color: #667eea;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-btn {
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .nav-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .simulation-canvas {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .network-node {
+            position: absolute;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .network-node:hover {
+            transform: scale(1.1);
+        }
+
+        .node-icon {
+            font-size: 3em;
+            margin-bottom: 5px;
+        }
+
+        .node-label {
+            font-size: 0.9em;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .node-status {
+            font-size: 0.7em;
+            margin-top: 3px;
+            padding: 2px 8px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 10px;
+        }
+
+        .client {
+            width: 80px;
+            height: 80px;
+        }
+
+        .load-balancer {
+            width: 120px;
+            height: 120px;
+        }
+
+        .server {
+            width: 100px;
+            height: 100px;
+        }
+
+        .packet {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2em;
+            box-shadow: 0 0 20px rgba(255,255,255,0.5);
+            z-index: 50;
+        }
+
+        .packet.video {
+            background: linear-gradient(135deg, #ff6b6b, #ff8787);
+            box-shadow: 0 0 20px rgba(255,107,107,0.8);
+        }
+
+        .packet.api {
+            background: linear-gradient(135deg, #4ecdc4, #6ee7de);
+            box-shadow: 0 0 20px rgba(78,205,196,0.8);
+        }
+
+        .packet.image {
+            background: linear-gradient(135deg, #95e1d3, #a8f0e4);
+            box-shadow: 0 0 20px rgba(149,225,211,0.8);
+        }
+
+        .connection-line {
+            position: absolute;
+            height: 2px;
+            background: rgba(102,126,234,0.3);
+            transform-origin: left center;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .stats-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            min-width: 250px;
+        }
+
+        .stats-panel h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stat-label {
+            color: #aaa;
+        }
+
+        .stat-value {
+            color: white;
+            font-weight: bold;
+        }
+
+        .legend {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+        }
+
+        .legend h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            font-size: 0.85em;
+        }
+
+        .legend-dot {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+        }
+
+        .glow {
+            animation: glow 1s ease-in-out;
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 0 10px rgba(102,126,234,0.5);
+            }
+            50% {
+                box-shadow: 0 0 30px rgba(102,126,234,1);
+            }
+        }
+
+        .algorithm-display {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            font-size: 1.2em;
+        }
+
+        .algorithm-display .label {
+            color: #aaa;
+            font-size: 0.8em;
+            margin-bottom: 5px;
+        }
+
+        .algorithm-display .value {
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .request-log {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            max-width: 300px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .request-log h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .log-entry {
+            font-size: 0.75em;
+            padding: 3px 0;
+            color: #aaa;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .log-entry.success {
+            color: #4caf50;
+        }
+
+        .log-entry.warning {
+            color: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌐 Network Traffic Simulation</h1>
+        <div class="nav-links">
+            <a href="/" class="nav-btn">📊 Back to Dashboard</a>
+            <button class="nav-btn" id="pauseBtn">⏸️ Pause</button>
+            <button class="nav-btn" id="speedBtn">⚡ Speed: 1x</button>
+        </div>
+    </div>
+
+    <div class="simulation-canvas" id="canvas">
+        <!-- Network nodes will be added here -->
+    </div>
+
+    <div class="algorithm-display">
+        <div class="label">Current Algorithm</div>
+        <div class="value" id="currentAlgo">Content-Based</div>
+    </div>
+
+    <div class="legend">
+        <h4>Packet Types</h4>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: linear-gradient(135deg, #ff6b6b, #ff8787);"></div>
+            <span>🎬 Video Request</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: linear-gradient(135deg, #4ecdc4, #6ee7de);"></div>
+            <span>📡 API Request</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: linear-gradient(135deg, #95e1d3, #a8f0e4);"></div>
+            <span>🖼️ Image Request</span>
+        </div>
+    </div>
+
+    <div class="stats-panel">
+        <h3>Live Statistics</h3>
+        <div class="stat-item">
+            <span class="stat-label">Packets Sent:</span>
+            <span class="stat-value" id="packetsSent">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">Active Packets:</span>
+            <span class="stat-value" id="activePackets">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">ServerA:</span>
+            <span class="stat-value" id="serverACount">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">ServerB:</span>
+            <span class="stat-value" id="serverBCount">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">ServerC:</span>
+            <span class="stat-value" id="serverCCount">0</span>
+        </div>
+    </div>
+
+    <div class="request-log">
+        <h4>Recent Requests</h4>
+        <div id="logEntries">
+            <div class="log-entry">Waiting for traffic...</div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:8080');
+        const canvas = document.getElementById('canvas');
+        
+        let isPaused = false;
+        let speedMultiplier = 1;
+        let packetId = 0;
+        let activePackets = new Set();
+        
+        const stats = {
+            packetsSent: 0,
+            serverA: 0,
+            serverB: 0,
+            serverC: 0
+        };
+
+        const positions = {
+            clients: [
+                { x: 100, y: 150, label: 'Client 1' },
+                { x: 100, y: 300, label: 'Client 2' },
+                { x: 100, y: 450, label: 'Client 3' },
+                { x: 100, y: 600, label: 'Client 4' }
+            ],
+            loadBalancer: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+            servers: [
+                { x: window.innerWidth - 150, y: 200, label: 'ServerA\n(Video)', color: '#FF6B6B', name: 'ServerA' },
+                { x: window.innerWidth - 150, y: window.innerHeight / 2, label: 'ServerB\n(API)', color: '#4ECDC4', name: 'ServerB' },
+                { x: window.innerWidth - 150, y: window.innerHeight - 200, label: 'ServerC\n(Image)', color: '#95E1D3', name: 'ServerC' }
+            ]
+        };
+
+        function createNode(type, position, label, color = '#667eea') {
+            const node = document.createElement('div');
+            node.className = `network-node ${type}`;
+            node.style.left = `${position.x - (type === 'load-balancer' ? 60 : type === 'server' ? 50 : 40)}px`;
+            node.style.top = `${position.y - (type === 'load-balancer' ? 60 : type === 'server' ? 50 : 40)}px`;
+            
+            let icon = '';
+            if (type === 'client') icon = '💻';
+            else if (type === 'load-balancer') icon = '🔄';
+            else if (type === 'server') icon = '🖥️';
+            
+            node.innerHTML = `
+                <div class="node-icon">${icon}</div>
+                <div class="node-label">${label}</div>
+                <div class="node-status" style="background: ${color};">●</div>
+            `;
+            
+            canvas.appendChild(node);
+            return node;
+        }
+
+        function drawConnectionLine(from, to) {
+            const line = document.createElement('div');
+            line.className = 'connection-line';
+            
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            
+            line.style.width = `${length}px`;
+            line.style.left = `${from.x}px`;
+            line.style.top = `${from.y}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            
+            canvas.appendChild(line);
+        }
+
+        function initializeNetwork() {
+            // Draw connection lines
+            positions.clients.forEach(client => {
+                drawConnectionLine(client, positions.loadBalancer);
+            });
+            
+            positions.servers.forEach(server => {
+                drawConnectionLine(positions.loadBalancer, server);
+            });
+            
+            // Create nodes
+            positions.clients.forEach(client => {
+                createNode('client', client, client.label);
+            });
+            
+            createNode('load-balancer', positions.loadBalancer, 'Load\nBalancer', '#667eea');
+            
+            positions.servers.forEach(server => {
+                createNode('server', server, server.label, server.color);
+            });
+        }
+
+        function createPacket(clientIndex, type, targetServer) {
+            if (isPaused) return;
+            
+            const id = `packet-${packetId++}`;
+            const packet = document.createElement('div');
+            packet.id = id;
+            packet.className = `packet ${type}`;
+            
+            const icons = { video: '🎬', api: '📡', image: '🖼️' };
+            packet.innerHTML = icons[type];
+            
+            const startPos = positions.clients[clientIndex];
+            packet.style.left = `${startPos.x}px`;
+            packet.style.top = `${startPos.y}px`;
+            
+            canvas.appendChild(packet);
+            activePackets.add(id);
+            
+            // Animate to load balancer
+            setTimeout(() => {
+                if (isPaused) return;
+                animatePacket(packet, startPos, positions.loadBalancer, () => {
+                    // Flash load balancer
+                    flashNode(positions.loadBalancer);
+                    
+                    // Then to server
+                    setTimeout(() => {
+                        if (isPaused) return;
+                        const serverPos = positions.servers.find(s => s.name === targetServer);
+                        animatePacket(packet, positions.loadBalancer, serverPos, () => {
+                            // Flash server
+                            flashNode(serverPos);
+                            
+                            // Remove packet
+                            setTimeout(() => {
+                                packet.remove();
+                                activePackets.delete(id);
+                                updateStats();
+                            }, 200);
+                        });
+                    }, 300 / speedMultiplier);
+                });
+            }, 50);
+            
+            stats.packetsSent++;
+            stats[targetServer.toLowerCase().replace('server', 'server')]++;
+            updateStats();
+        }
+
+        function animatePacket(packet, from, to, callback) {
+            const duration = 1000 / speedMultiplier;
+            packet.style.transition = `all ${duration}ms linear`;
+            packet.style.left = `${to.x}px`;
+            packet.style.top = `${to.y}px`;
+            
+            setTimeout(callback, duration);
+        }
+
+        function flashNode(position) {
+            // Visual feedback when packet reaches node
+            const flash = document.createElement('div');
+            flash.style.position = 'absolute';
+            flash.style.left = `${position.x - 30}px`;
+            flash.style.top = `${position.y - 30}px`;
+            flash.style.width = '60px';
+            flash.style.height = '60px';
+            flash.style.borderRadius = '50%';
+            flash.style.background = 'rgba(102,126,234,0.5)';
+            flash.style.pointerEvents = 'none';
+            flash.className = 'glow';
+            
+            canvas.appendChild(flash);
+            setTimeout(() => flash.remove(), 1000);
+        }
+
+        function updateStats() {
+            document.getElementById('packetsSent').textContent = stats.packetsSent;
+            document.getElementById('activePackets').textContent = activePackets.size;
+            document.getElementById('serverACount').textContent = stats.serverA;
+            document.getElementById('serverBCount').textContent = stats.serverB;
+            document.getElementById('serverCCount').textContent = stats.serverC;
+        }
+
+        function addLogEntry(message, type = 'success') {
+            const logContainer = document.getElementById('logEntries');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = message;
+            
+            logContainer.insertBefore(entry, logContainer.firstChild);
+            
+            // Keep only last 10 entries
+            while (logContainer.children.length > 10) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // Listen to real load balancer events
+        socket.on('metrics_update', (data) => {
+            if (data.algorithm) {
+                document.getElementById('currentAlgo').textContent = 
+                    data.algorithm.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            }
+            
+            if (data.recent_requests && data.recent_requests.length > 0) {
+                const latest = data.recent_requests[data.recent_requests.length - 1];
+                
+                // Determine request type from path
+                let type = 'api';
+                if (latest.path.includes('video')) type = 'video';
+                else if (latest.path.includes('image')) type = 'image';
+                
+                // Random client
+                const clientIndex = Math.floor(Math.random() * 4);
+                
+                // Create packet
+                createPacket(clientIndex, type, latest.backend);
+                
+                // Log entry
+                const optimized = latest.optimized ? '✓' : '⚠️';
+                addLogEntry(
+                    `${optimized} ${type.toUpperCase()} → ${latest.backend} (${latest.duration}ms)`,
+                    latest.optimized ? 'success' : 'warning'
+                );
+            }
+        });
+
+        // Simulation mode - generate random traffic when no real traffic
+        let simulationInterval;
+        function startSimulation() {
+            simulationInterval = setInterval(() => {
+                if (isPaused) return;
+                
+                const types = ['video', 'api', 'image'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                const clientIndex = Math.floor(Math.random() * 4);
+                
+                // Simulate content-based routing
+                let targetServer;
+                if (type === 'video') targetServer = 'ServerA';
+                else if (type === 'api') targetServer = 'ServerB';
+                else targetServer = 'ServerC';
+                
+                createPacket(clientIndex, type, targetServer);
+                
+                const optimized = true;
+                addLogEntry(
+                    `${optimized ? '✓' : '⚠️'} ${type.toUpperCase()} → ${targetServer} (simulated)`,
+                    optimized ? 'success' : 'warning'
+                );
+            }, 2000 / speedMultiplier);
+        }
+
+        // Controls
+        document.getElementById('pauseBtn').addEventListener('click', (e) => {
+            isPaused = !isPaused;
+            e.target.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+        });
+
+        document.getElementById('speedBtn').addEventListener('click', (e) => {
+            const speeds = [1, 2, 4];
+            const currentIndex = speeds.indexOf(speedMultiplier);
+            speedMultiplier = speeds[(currentIndex + 1) % speeds.length];
+            e.target.textContent = `⚡ Speed: ${speedMultiplier}x`;
+            
+            // Restart simulation with new speed
+            clearInterval(simulationInterval);
+            startSimulation();
+        });
+
+        // Initialize
+        initializeNetwork();
+        startSimulation();
+
+        // Connection status
+        socket.on('connect', () => {
+            console.log('Connected to load balancer');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from load balancer');
+        });
+    </script>
+</body>
+</html>

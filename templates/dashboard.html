@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Load Balancer Dashboard - Real-Time Analytics</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .status-bar {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+        }
+
+        .status-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+
+        .algorithm-selector {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .algorithm-selector h3 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .algo-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .algo-btn {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+
+        .algo-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .algo-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .chart-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .servers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .server-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+
+        .server-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .server-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid;
+        }
+
+        .server-name {
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
+        .server-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.healthy {
+            background: #4caf50;
+        }
+
+        .status-dot.unhealthy {
+            background: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .server-type {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85em;
+            font-weight: bold;
+            color: white;
+            margin-top: 5px;
+        }
+
+        .server-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .metric {
+            text-align: center;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+
+        .metric-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .requests-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .requests-panel h3 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .request-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .request-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .request-path {
+            font-family: monospace;
+            color: #333;
+            flex: 1;
+        }
+
+        .request-server {
+            padding: 3px 8px;
+            border-radius: 3px;
+            color: white;
+            font-size: 0.85em;
+            margin: 0 10px;
+        }
+
+        .request-duration {
+            font-weight: bold;
+            color: #666;
+        }
+
+        .request-status {
+            margin-left: 10px;
+        }
+
+        .request-status.success {
+            color: #4caf50;
+        }
+
+        .request-status.failed {
+            color: #f44336;
+        }
+
+        .request-status.warning {
+            color: #ff9800;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+        }
+
+        .legend-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        .connection-status.connected {
+            background: #4caf50;
+        }
+
+        .connection-status.disconnected {
+            background: #f44336;
+        }
+
+        .comparison-table {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .comparison-table h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .best-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #4caf50;
+            color: white;
+            border-radius: 3px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status" id="connectionStatus">Connecting...</div>
+
+    <div class="container">
+        <header>
+            <h1>🔄 Application Layer Load Balancer</h1>
+            <p>Real-Time Monitoring Dashboard with Analytics</p>
+            <div style="margin-top: 20px;">
+                <a href="/simulate" style="display: inline-block; padding: 12px 30px; background: white; color: #667eea; text-decoration: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: all 0.3s;">
+                    🌐 View Network Simulation
+                </a>
+            </div>
+        </header>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-label">Total Requests</div>
+                <div class="status-value" id="totalRequests">0</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Active Connections</div>
+                <div class="status-value" id="activeConnections">0</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Failed Requests</div>
+                <div class="status-value" id="failedRequests">0</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Healthy Servers</div>
+                <div class="status-value" id="healthyServers">0/3</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Avg Response Time</div>
+                <div class="status-value" id="avgResponseTime">0ms</div>
+            </div>
+        </div>
+
+        <div class="algorithm-selector">
+            <h3>🔀 Load Balancing Algorithm</h3>
+            <div class="algo-buttons">
+                <button class="algo-btn active" data-algo="content-based">
+                    Content-Based (L7)
+                </button>
+                <button class="algo-btn" data-algo="round-robin">
+                    Round Robin
+                </button>
+                <button class="algo-btn" data-algo="least-connections">
+                    Least Connections
+                </button>
+                <button class="algo-btn" data-algo="file-size">
+                    File Size Based
+                </button>
+            </div>
+        </div>
+
+        <div class="comparison-table">
+            <h3>📊 Algorithm Performance Comparison</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Algorithm</th>
+                        <th>Total Requests</th>
+                        <th>Avg Response Time</th>
+                        <th>Optimization Rate</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="comparisonTableBody">
+                    <tr>
+                        <td>Content-Based</td>
+                        <td id="cb-requests">0</td>
+                        <td id="cb-latency">-</td>
+                        <td id="cb-optimization">-</td>
+                        <td id="cb-status">Not tested</td>
+                    </tr>
+                    <tr>
+                        <td>Round Robin</td>
+                        <td id="rr-requests">0</td>
+                        <td id="rr-latency">-</td>
+                        <td id="rr-optimization">-</td>
+                        <td id="rr-status">Not tested</td>
+                    </tr>
+                    <tr>
+                        <td>Least Connections</td>
+                        <td id="lc-requests">0</td>
+                        <td id="lc-latency">-</td>
+                        <td id="lc-optimization">-</td>
+                        <td id="lc-status">Not tested</td>
+                    </tr>
+                    <tr>
+                        <td>File Size Based</td>
+                        <td id="fs-requests">0</td>
+                        <td id="fs-latency">-</td>
+                        <td id="fs-optimization">-</td>
+                        <td id="fs-status">Not tested</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>📈 Requests per Server (Real-Time)</h3>
+                <div class="chart-container">
+                    <canvas id="requestsChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>⚡ Response Time Trend</h3>
+                <div class="chart-container">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>🎯 Optimization Rate by Algorithm</h3>
+                <div class="chart-container">
+                    <canvas id="optimizationChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>📊 Request Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-icon" style="background: #FF6B6B;"></div>
+                <span>ServerA (Video)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-icon" style="background: #4ECDC4;"></div>
+                <span>ServerB (API)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-icon" style="background: #95E1D3;"></div>
+                <span>ServerC (Image)</span>
+            </div>
+        </div>
+
+        <div class="servers-grid" id="serversGrid">
+            <!-- Server cards will be populated here -->
+        </div>
+
+        <div class="requests-panel">
+            <h3>📋 Recent Requests (Real-Time)</h3>
+            <div class="request-list" id="requestList">
+                <p style="text-align: center; color: #999; padding: 20px;">
+                    Waiting for requests...
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:8080');
+        
+        Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+        Chart.defaults.plugins.legend.display = true;
+
+        let requestsChart, latencyChart, optimizationChart, distributionChart;
+        
+        const chartData = {
+            requestsPerServer: { ServerA: [], ServerB: [], ServerC: [] },
+            latencyHistory: [],
+            algorithmStats: {
+                'content-based': { requests: 0, totalLatency: 0, optimized: 0 },
+                'round-robin': { requests: 0, totalLatency: 0, optimized: 0 },
+                'least-connections': { requests: 0, totalLatency: 0, optimized: 0 },
+                'file-size': { requests: 0, totalLatency: 0, optimized: 0 }
+            },
+            currentAlgorithm: 'content-based'
+        };
+
+        function initCharts() {
+            const ctx1 = document.getElementById('requestsChart').getContext('2d');
+            requestsChart = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: ['ServerA (Video)', 'ServerB (API)', 'ServerC (Image)'],
+                    datasets: [{
+                        label: 'Total Requests',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#FF6B6B', '#4ECDC4', '#95E1D3'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            const ctx2 = document.getElementById('latencyChart').getContext('2d');
+            latencyChart = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Response Time (ms)',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            const ctx3 = document.getElementById('optimizationChart').getContext('2d');
+            optimizationChart = new Chart(ctx3, {
+                type: 'bar',
+                data: {
+                    labels: ['Content-Based', 'Round Robin', 'Least Conn', 'File Size'],
+                    datasets: [{
+                        label: 'Optimization Rate (%)',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#4caf50', '#ff9800', '#f44336', '#2196f3'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true, max: 100 } }
+                }
+            });
+
+            const ctx4 = document.getElementById('distributionChart').getContext('2d');
+            distributionChart = new Chart(ctx4, {
+                type: 'doughnut',
+                data: {
+                    labels: ['ServerA', 'ServerB', 'ServerC'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#FF6B6B', '#4ECDC4', '#95E1D3']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        function updateCharts(data) {
+            if (!data.backends) return;
+
+            const requestCounts = data.backends.map(b => b.total);
+            requestsChart.data.datasets[0].data = requestCounts;
+            requestsChart.update('none');
+
+            distributionChart.data.datasets[0].data = requestCounts;
+            distributionChart.update('none');
+
+            if (data.recent_requests && data.recent_requests.length > 0) {
+                const latest = data.recent_requests[data.recent_requests.length - 1];
+                if (latest && latest.duration) {
+                    chartData.latencyHistory.push(latest.duration);
+                    
+                    if (chartData.latencyHistory.length > 20) {
+                        chartData.latencyHistory.shift();
+                    }
+                    
+                    latencyChart.data.labels = chartData.latencyHistory.map((_, i) => i + 1);
+                    latencyChart.data.datasets[0].data = chartData.latencyHistory;
+                    latencyChart.update('none');
+                }
+
+                const currentAlgo = data.algorithm;
+                chartData.currentAlgorithm = currentAlgo;
+                
+                data.recent_requests.forEach(req => {
+                    if (req.status === 'success') {
+                        const stats = chartData.algorithmStats[currentAlgo];
+                        stats.requests++;
+                        stats.totalLatency += req.duration;
+                        if (req.optimized) stats.optimized++;
+                    }
+                });
+
+                updateComparisonTable();
+                updateOptimizationChart();
+            }
+        }
+
+        function updateOptimizationChart() {
+            const algorithms = ['content-based', 'round-robin', 'least-connections', 'file-size'];
+            const optimizationRates = algorithms.map(algo => {
+                const stats = chartData.algorithmStats[algo];
+                return stats.requests > 0 ? (stats.optimized / stats.requests) * 100 : 0;
+            });
+
+            optimizationChart.data.datasets[0].data = optimizationRates;
+            optimizationChart.update('none');
+        }
+
+        function updateComparisonTable() {
+            const algoMap = {
+                'content-based': 'cb',
+                'round-robin': 'rr',
+                'least-connections': 'lc',
+                'file-size': 'fs'
+            };
+
+            let bestLatency = Infinity;
+            let bestOptimization = 0;
+            let bestLatencyAlgo = '';
+            let bestOptAlgo = '';
+
+            for (const [algo, prefix] of Object.entries(algoMap)) {
+                const stats = chartData.algorithmStats[algo];
+                
+                if (stats.requests > 0) {
+                    const avgLatency = stats.totalLatency / stats.requests;
+                    const optRate = (stats.optimized / stats.requests) * 100;
+
+                    document.getElementById(`${prefix}-requests`).textContent = stats.requests;
+                    document.getElementById(`${prefix}-latency`).textContent = `${avgLatency.toFixed(2)}ms`;
+                    document.getElementById(`${prefix}-optimization`).textContent = `${optRate.toFixed(1)}%`;
+                    document.getElementById(`${prefix}-status`).textContent = algo === chartData.currentAlgorithm ? '✓ Active' : 'Tested';
+
+                    if (avgLatency < bestLatency) {
+                        bestLatency = avgLatency;
+                        bestLatencyAlgo = prefix;
+                    }
+                    if (optRate > bestOptimization) {
+                        bestOptimization = optRate;
+                        bestOptAlgo = prefix;
+                    }
+                }
+            }
+
+            document.querySelectorAll('.best-indicator').forEach(el => el.remove());
+            
+            if (bestLatencyAlgo) {
+                const latencyCell = document.getElementById(`${bestLatencyAlgo}-latency`);
+                if (!latencyCell.querySelector('.best-indicator')) {
+                    latencyCell.innerHTML += ' <span class="best-indicator">BEST</span>';
+                }
+            }
+            
+            if (bestOptAlgo) {
+                const optCell = document.getElementById(`${bestOptAlgo}-optimization`);
+                if (!optCell.querySelector('.best-indicator')) {
+                    optCell.innerHTML += ' <span class="best-indicator">BEST</span>';
+                }
+            }
+        }
+
+        socket.on('connect', () => {
+            connectionStatus.textContent = '🟢 Connected';
+            connectionStatus.className = 'connection-status connected';
+        });
+
+        socket.on('disconnect', () => {
+            connectionStatus.textContent = '🔴 Disconnected';
+            connectionStatus.className = 'connection-status disconnected';
+        });
+
+        socket.on('metrics_update', (data) => {
+            updateDashboard(data);
+            updateCharts(data);
+        });
+
+        function updateDashboard(data) {
+            document.querySelectorAll('.algo-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.algo === data.algorithm);
+            });
+
+            updateServers(data.backends);
+
+            const totalRequests = data.backends.reduce((sum, b) => sum + b.total, 0);
+            const activeConns = data.backends.reduce((sum, b) => sum + b.active, 0);
+            const failedReqs = data.backends.reduce((sum, b) => sum + b.failed, 0);
+            const healthyCount = data.backends.filter(b => b.healthy).length;
+            const avgResponse = data.backends.reduce((sum, b) => sum + b.avg_response, 0) / data.backends.length;
+
+            document.getElementById('totalRequests').textContent = totalRequests;
+            document.getElementById('activeConnections').textContent = activeConns;
+            document.getElementById('failedRequests').textContent = failedReqs;
+            document.getElementById('healthyServers').textContent = `${healthyCount}/3`;
+            document.getElementById('avgResponseTime').textContent = `${avgResponse.toFixed(0)}ms`;
+
+            if (data.recent_requests && data.recent_requests.length > 0) {
+                updateRequestList(data.recent_requests);
+            }
+        }
+
+        function updateServers(backends) {
+            document.getElementById('serversGrid').innerHTML = backends.map(server => `
+                <div class="server-card">
+                    <div class="server-header" style="border-color: ${server.color};">
+                        <div>
+                            <div class="server-name">${server.name}</div>
+                            <div class="server-type" style="background: ${server.color};">
+                                ${server.type.toUpperCase()} SERVER
+                            </div>
+                        </div>
+                        <div class="server-status">
+                            <div class="status-dot ${server.healthy ? 'healthy' : 'unhealthy'}"></div>
+                            <span>${server.healthy ? 'Healthy' : 'Unhealthy'}</span>
+                        </div>
+                    </div>
+                    <div class="server-metrics">
+                        <div class="metric">
+                            <div class="metric-label">Active</div>
+                            <div class="metric-value">${server.active}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Total</div>
+                            <div class="metric-value">${server.total}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Failed</div>
+                            <div class="metric-value">${server.failed}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Avg Response</div>
+                            <div class="metric-value">${server.avg_response}ms</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateRequestList(requests) {
+            const recentRequests = requests.slice(-15).reverse();
+            
+            document.getElementById('requestList').innerHTML = recentRequests.map(req => {
+                const serverColor = getServerColor(req.backend);
+                const statusIcon = req.status === 'success' ? '✓' : '✗';
+                const statusClass = req.status === 'success' ? 
+                    (req.optimized ? 'success' : 'warning') : 'failed';
+                
+                return `
+                    <div class="request-item">
+                        <div class="request-path">${req.path}</div>
+                        <div class="request-server" style="background: ${serverColor};">
+                            ${req.backend}
+                        </div>
+                        <div class="request-duration">${req.duration}ms</div>
+                        <div class="request-status ${statusClass}">
+                            ${statusIcon} ${!req.optimized && req.status === 'success' ? '⚠️' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getServerColor(serverName) {
+            const colors = {
+                'ServerA': '#FF6B6B',
+                'ServerB': '#4ECDC4',
+                'ServerC': '#95E1D3'
+            };
+            return colors[serverName] || '#999';
+        }
+
+        document.querySelectorAll('.algo-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const algorithm = btn.dataset.algo;
+                
+                try {
+                    const response = await fetch('http://localhost:8080/lb/algorithm', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ algorithm })
+                    });
+                    
+                    if (response.ok) {
+                        document.querySelectorAll('.algo-btn').forEach(b => 
+                            b.classList.remove('active'));
+                        btn.classList.add('active');
+                    }
+                } catch (error) {
+                    console.error('Failed to change algorithm:', error);
+                }
+            });
+        });
+
+        async function initialize() {
+            initCharts();
+            
+            try {
+                const response = await fetch('http://localhost:8080/lb/stats');
+                const data = await response.json();
+                updateDashboard({
+                    algorithm: data.algorithm,
+                    backends: data.backends,
+                    recent_requests: []
+                });
+            } catch (error) {
+                console.error('Failed to fetch initial stats:', error);
+            }
+        }
+
+        window.addEventListener('load', initialize);
+    </script>
+</body>
+</html>
