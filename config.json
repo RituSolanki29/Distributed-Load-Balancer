@@ -1,0 +1,48 @@
+{
+  "_comment": "REPLACE THE IP ADDRESSES BELOW WITH YOUR ACTUAL LAPTOP IPs",
+  
+  "load_balancer": {
+    "laptop": 1,
+    "ip": "172.29.7.57",
+    "port": 8080
+  },
+  
+  "dashboard": {
+    "laptop": 1,
+    "ip": "172.29.7.57",
+    "port": 9000
+  },
+  
+  "backends": [
+    {
+      "name": "ServerA",
+      "laptop": 1,
+      "ip": "172.29.7.57",
+      "port": 5001,
+      "type": "video",
+      "color": "#FF6B6B"
+    },
+    {
+      "name": "ServerB",
+      "laptop": 2,
+      "ip": "172.29.22.132",
+      "port": 5002,
+      "type": "api",
+      "color": "#4ECDC4"
+    },
+    {
+      "name": "ServerC",
+      "laptop": 3,
+      "ip": "172.29.0.129",
+      "port": 5003,
+      "type": "image",
+      "color": "#95E1D3"
+    }
+  ],
+  
+  "network": {
+    "request_timeout": 10,
+    "health_check_interval": 5,
+    "health_check_timeout": 3
+  }
+}
